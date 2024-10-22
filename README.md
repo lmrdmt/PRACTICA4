@@ -119,40 +119,74 @@ docker run -dit --name contenedor4 --network mi_red2 busybox
 # **Docker Compose**
 
 ## **10. Guía de Iniciación de Docker Compose**
+Deberemos asegurarnos de tener:
+   - Instalada la última versión de Docker Compose
+   - Un básico entendimiento de los conceptos de docker y como trabaja.
 
-1. Crear un ficheiro `docker-compose.yml` básico:
+1.Crear un directorio para el proyecto:
+```bash
+mkdir Práctica4
+cd Práctica4
+```
+2.Crear un archivo llamado app.py.Dentro del mismo pegamos el siguiente código:
+```python
+import time
 
-   ```yaml
-   version: '3'
-   services:
-     web:
-       image: nginx
-       ports:
-         - "8080:80"
-     db:
-       image: mysql
-       environment:
-         MYSQL_ROOT_PASSWORD: example
-   ```
+import redis
+from flask import Flask
 
-2. Iniciar os contenedores con Docker Compose:
-   
+app = Flask(__name__)
+cache = redis.Redis(host='redis', port=6379)
 
-   ```bash
-   docker-compose up
-   ```
+def get_hit_count():
+    retries = 5
+    while True:
+        try:
+            return cache.incr('hits')
+        except redis.exceptions.ConnectionError as exc:
+            if retries == 0:
+                raise exc
+            retries -= 1
+            time.sleep(0.5)
 
-3. Ver o estado dos servizos:
+@app.route('/')
+def hello():
+    count = get_hit_count()
+    return 'Hello World! I have been seen {} times.\n'.format(count)
+```
+En el ejemplo redis is el hostname y el puerto por defecto es el 6379.
+**función get_hit_count**. Este bucle de reintento básico intenta la petición varias veces si el servicio Redis no está disponible. Esto es útil en el inicio mientras la aplicación está en línea, pero también hace que la aplicación sea más resistente si el servicio Redis necesita ser reiniciado en cualquier momento durante la vida de la aplicación. En un cluster, esto también ayuda a manejar caídas momentáneas de conexión entre nodos.
 
-   ```bash
-   docker-compose ps
-   ```
+3.Creamos otro fichero llamado requirements.txt en nuestro directorio y pegamos:
+```
+flask
+redis
+```
+4.Creamos un Dockerfile y pegamos dentro:
+```# syntax=docker/dockerfile:1
+FROM python:3.10-alpine
+WORKDIR /code
+ENV FLASK_APP=app.py
+ENV FLASK_RUN_HOST=0.0.0.0
+RUN apk add --no-cache gcc musl-dev linux-headers
+COPY requirements.txt requirements.txt
+RUN pip install -r requirements.txt
+EXPOSE 5000
+COPY . .
+CMD ["flask", "run", "--debug"]
+```
+Deberemos tener en cuenta que este archivo no debe tener ningún tipo de extensión.
 
-4. Apagar os servizos:
+   Comprexión del archivo anterior:
+   - Construye una imagen usando Python3.10 image.
+   - Elige el directorio de trabajo - /code
+   - instala gcc y otras dependencias
+   - Copia el documento _requirements.txt_ e instala las python dependencias
+   - Añade metadatos a la imagen que describen que el contenedor está escuchando por el puerto 5000.
+   - Copia el actual directorio . en el proyecto al directorio de trabajo . en la imagen
+   - Establece el comando por defecto para el contenedor a _flask run_ --debug
 
-   ```bash
-   docker-compose down
-   ```
+5. Definimos los servicios en un Compose file.
 
 ---
 
